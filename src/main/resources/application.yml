@@ -1,0 +1,40 @@
+micronaut:
+  application:
+    name: style_server
+  server:
+    port: 8089
+    cors:
+      enabled: true
+  security:
+    authentication: bearer
+    token:
+      jwt:
+        signatures:
+          secret:
+            generator:
+              secret: pleaseChangeThisSecretForANewOne
+      defaultExpiration: 2592000
+  endpoints:
+    health:
+      enabled: Boolean
+      sensitive: Boolean
+      details-visible: String
+      status:
+          http-mapping: Map<String, HttpStatus>
+  micronaut:
+    router:
+      static-resources:
+        default:
+          enabled: true
+          mapping: "/public/**"
+          paths: "classpath:public"
+
+postgres:
+  reactive:
+    client:
+      port: 5432
+      host: localhost
+      database: style_db
+      user: style_user
+      password: Parol547_
+      maxSize: 5
