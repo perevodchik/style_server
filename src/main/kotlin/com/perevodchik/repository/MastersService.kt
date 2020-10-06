@@ -15,5 +15,5 @@ interface MastersService {
     fun addMasterPortfolio(userId: Int, fileName: String, upload: StreamingFileUpload): PortfolioItem?
     fun getMasterPortfolio(userId: Int): List<PortfolioItem>
     fun getMasterPhotos(userId: Int): String
-    fun deleteMasterPortfolio(masterId: Int, portfolioItemId: Int): Boolean
+    fun deleteMasterPortfolio(userId: Int, portfolioItemId: Int): Boolean
 }

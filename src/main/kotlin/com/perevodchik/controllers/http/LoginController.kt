@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.User
 import io.micronaut.http.annotation.Controller
@@ -17,12 +17,14 @@ class LoginController {
 
     @Get("/{phone}")
     fun auth(@PathVariable phone: String): User {
-        return User(0, 0, 2, 0, phone, "name", "surname", "email", "", "", isShowAddress = true, isShowPhone = true, isShowEmail = true, services = mutableListOf(), comments = mutableListOf())
+        println("/login/{$phone}")
+        return User(0, 0, 2, 0, 0.0, phone, "name", "surname", "email", "", "", isShowAddress = true, isShowPhone = true, isShowEmail = true, services = mutableListOf(), comments = mutableListOf())
     }
 
     @Secured(SecurityRule.IS_AUTHENTICATED)
     @Get("/current")
     fun current(principal: Principal) {
+        println("/login/current")
         print("$principal")
     }
 

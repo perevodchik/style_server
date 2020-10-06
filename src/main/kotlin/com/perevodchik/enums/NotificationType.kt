@@ -7,7 +7,7 @@ enum class NotificationType(_type: Int) {
     ORDER_CANCELLED_BY_MASTER(3),
     ORDER_FINISHED_BY_CLIENT(4),
     ORDER_FINISHED_BY_MASTER(5),
-    ORDER_SET_MASTER(6),
+    ORDER_SELECT_BY_MASTER(6),
     ORDER_NEW_SENTENCE(7);
 
     val value = _type

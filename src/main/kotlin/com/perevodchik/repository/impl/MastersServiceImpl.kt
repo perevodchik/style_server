@@ -80,11 +80,11 @@ class MastersServiceImpl: MastersService {
     }
 
     override fun addMasterPortfolio(userId: Int, fileName: String, upload: StreamingFileUpload): PortfolioItem? {
-        val isUpload = FileUtils().uploadFile(upload, "static/portfolios/$fileName")
-        if(isUpload) {
-            val r = pool.rxQuery("INSERT INTO user_portfolios (user_id, image) VALUES ($userId, '$fileName') RETURNING user_portfolios.id;").blockingGet()
+        val uploadFile = FileUtils().uploadFile(upload, fileName)
+        if(uploadFile.isNotEmpty() && uploadFile.isNotBlank()) {
+            val r = pool.rxQuery("INSERT INTO user_portfolios (user_id, image) VALUES ($userId, '$uploadFile') RETURNING user_portfolios.id;").blockingGet()
             val id = r.iterator().next().getInteger("id")
-            return PortfolioItem(id, userId, fileName)
+            return PortfolioItem(id, userId, uploadFile)
         }
         return null
     }
@@ -111,7 +111,6 @@ class MastersServiceImpl: MastersService {
         val photos = mutableListOf<String>()
         while(i.hasNext()) {
             val row = i.next()
-            println(row.getString("image"))
             photos.add(row.getString("image"))
         }
         return photos.joinToString("," )
@@ -127,7 +126,7 @@ class MastersServiceImpl: MastersService {
             val r0 = pool.rxQuery("DELETE FROM user_portfolios WHERE id = $portfolioItemId").blockingGet()
             return if(r0.rowCount() > 0) {
                 try {
-                    val isDelete = FileUtils().deleteFile(row.getString("image"))
+                    FileUtils().deleteFile(row.getString("image"))
                 } catch(ex: Exception) {}
                 true
             } else false

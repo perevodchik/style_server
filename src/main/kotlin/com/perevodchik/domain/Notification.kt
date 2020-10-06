@@ -11,9 +11,9 @@ data class Notification(
 
 data class NotificationFull(
         var id: Int,
-        var client: UserShort?,
-        var master: UserShort?,
-        var order: OrderName,
+        var user: UserShort?,
+        var secondUser: UserShort?,
+        var order: OrderName?,
         var notificationType: Int,
         var isDirty: Boolean,
         var createdAt: String?

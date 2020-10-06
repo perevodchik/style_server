@@ -2,11 +2,11 @@ package com.perevodchik.repository.impl
 
 import com.perevodchik.domain.User
 import com.perevodchik.domain.UserShortData
+import com.perevodchik.domain.UserUpdatePayload
 import com.perevodchik.repository.UsersService
+import com.perevodchik.utils.FileUtils
 import io.micronaut.http.multipart.StreamingFileUpload
 import io.micronaut.security.authentication.Authentication
-import io.reactivex.Single
-import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,9 +16,30 @@ class UsersServiceImpl: UsersService {
     @Inject
     lateinit var pool: io.reactiverse.reactivex.pgclient.PgPool
 
-    override fun getMasters(offset: Int, limit: Int): List<UserShortData> {
+    override fun getMasters(offset: Int, limit: Int, cities: String, services: String, withHighRate: Boolean): List<UserShortData> {
         val masters = mutableListOf<UserShortData>()
-        val r = pool.rxQuery("SELECT users.id, users.name, users.surname, users.avatar, users.city_id, string_agg(user_portfolios.image, ',') as portfolio, AVG(COALESCE(comments.rate, 0)) as rate FROM users LEFT JOIN user_portfolios ON users.id = user_portfolios.user_id LEFT JOIN comments ON users.id = comments.target_id WHERE ROLE = 1 GROUP BY users.id ORDER BY rate DESC OFFSET $offset LIMIT $limit;").blockingGet()
+        val q = "SELECT u.id, u.name, u.surname, u.avatar, u.city_id, " +
+                "string_agg(user_portfolios.image, ',') as portfolio, " +
+                "AVG(COALESCE(comments.rate, 0)) as rate FROM users u " +
+                "LEFT JOIN user_portfolios ON u.id = user_portfolios.user_id " +
+                "LEFT JOIN comments ON u.id = comments.target_id " +
+                "WHERE ROLE = 1 " +
+                (if(cities.isNotEmpty()) "AND u.city_id IN ($cities) " else "") +
+                (if(withHighRate) "AND rate >= 3.5 " else "") +
+                (if(services.isNotEmpty()) {
+                    var servicesString = ""
+                    for(s in services.split(","))
+                        servicesString += "'$s',"
+                    if(servicesString.endsWith(","))
+                        servicesString = servicesString.substring(0, servicesString.length - 1)
+                    "AND (SELECT ARRAY[array_agg(distinct user_services.service_id)] as services FROM users LEFT JOIN user_services ON u.id = user_services.user_id) && ARRAY[$servicesString]::int[] "
+                } else "") +
+                "GROUP BY u.id " +
+                "ORDER BY rate DESC " +
+                "OFFSET $offset LIMIT $limit;"
+
+        println(q)
+        val r = pool.rxQuery(q).blockingGet()
         val i = r.iterator()
         while(i.hasNext()) {
             val row = i.next()
@@ -41,21 +62,22 @@ class UsersServiceImpl: UsersService {
         val i = result.iterator()
         if(i.hasNext()) {
             val row = i.next()
-            val user = User(
+            return User(
                     id = row.getInteger("id"),
                     cityId = row.getInteger("city_id"),
                     role = row.getInteger("role"),
+                    rate = getUserRate(id),
                     phone = row.getString("phone"),
                     name = row.getString("name"),
                     surname = row.getString("surname"),
                     email = row.getString("email"),
                     address = row.getString("address") ?: "",
+                    about = row.getString("about") ?: "",
                     avatar = row.getString("avatar"),
                     isShowAddress = row.getBoolean("is_show_address"),
                     isShowPhone = row.getBoolean("is_show_phone"),
                     isShowEmail = row.getBoolean("is_show_email")
             )
-            return user
         }
         return null
     }
@@ -65,27 +87,22 @@ class UsersServiceImpl: UsersService {
         val i = result.iterator()
         if(i.hasNext()) {
             val row = i.next()
-            val user = User(
+            return User(
                     id = row.getInteger("id"),
                     cityId = row.getInteger("city_id"),
                     role = row.getInteger("role"),
+                    rate = getUserRate(row.getInteger("id")),
                     phone = row.getString("phone"),
                     name = row.getString("name"),
                     surname = row.getString("surname"),
                     email = row.getString("email"),
+                    about = row.getString("about") ?: "",
                     address = row.getString("address") ?: "",
                     avatar = row.getString("avatar"),
                     isShowAddress = row.getBoolean("is_show_address"),
                     isShowPhone = row.getBoolean("is_show_phone"),
                     isShowEmail = row.getBoolean("is_show_email")
             )
-            if(!user.isShowAddress)
-                user.address = ""
-            if(!user.isShowPhone)
-                user.phone = ""
-            if(!user.isShowEmail)
-                user.email = ""
-            return user
         }
         return null
     }
@@ -95,15 +112,20 @@ class UsersServiceImpl: UsersService {
         return getByPhone(phone)
     }
 
+    override fun getUserRate(id: Int): Double {
+        val r = pool.rxQuery("SELECT AVG(rate) as rate FROM comments WHERE target_id = $id;").blockingGet()
+        return r.iterator().next().getDouble("rate") ?: 0.0
+    }
+
     override fun create(user: User): User? {
         val usersByPhone = pool.rxQuery("SELECT * FROM users WHERE phone = '${user.phone}'").blockingGet()
         println("exist ? ${usersByPhone.rowCount()}")
         if(usersByPhone.rowCount() == 0) {
             val r = pool.rxQuery(
                     "INSERT INTO users (" +
-                            "city_id, name, surname, avatar, phone, address, email, role" +
+                            "city_id, name, surname, avatar, phone, address, email, about, role" +
                             ") VALUES (" +
-                            "${user.cityId}, '${user.name}', '${user.surname}', '${user.avatar}', '${user.phone}', '', '${user.email}', ${user.role}" +
+                            "${user.cityId}, '${user.name}', '${user.surname}', '${user.avatar}', '${user.phone}', '', '${user.email}', '', ${user.role}" +
                             ") RETURNING users.id;"
             ).blockingGet()
             val i = r.iterator()
@@ -116,13 +138,11 @@ class UsersServiceImpl: UsersService {
         return null
     }
 
-    override fun update(user: User, authentication: Authentication): User {
-        val value = getByPhone(authentication.attributes["username"] as String)
-        if(value != null) {
-            val r = pool.rxQuery(
-                    "UPDATE users SET name = '${user.name}', surname = '${user.surname}', email = '${user.email}', address = '${user.address}', city_id = ${user.cityId} WHERE id = ${value.id};"
-            ).blockingGet()
-        }
+    override fun update(user: UserUpdatePayload, authentication: Authentication): UserUpdatePayload {
+        val userId = authentication.attributes["id"] as Int
+        pool.rxQuery(
+                "UPDATE users SET name = '${user.name}', surname = '${user.surname}', email = '${user.email}', address = '${user.address}', about = '${user.about}', city_id = ${user.cityId} WHERE id = $userId;"
+        ).blockingGet()
         return user
     }
 
@@ -139,9 +159,13 @@ class UsersServiceImpl: UsersService {
         return r.rowCount() > 0
     }
 
-    override fun upload(phone: String, name: String, upload: StreamingFileUpload) {
-        val tempFile = File.createTempFile(upload.filename, name)
-        val uploadPublisher = upload.transferTo(tempFile)
-        Single.fromPublisher(uploadPublisher)
+    override fun upload(phone: String, name: String, upload: StreamingFileUpload): String {
+        val uploadResult = FileUtils().uploadFile(upload, name)
+        if(uploadResult.isNotEmpty()) {
+            val r = pool.rxQuery("UPDATE users SET avatar = '$uploadResult' WHERE phone = '$phone';").blockingGet()
+            if(r.rowCount() > 0)
+                return uploadResult
+        }
+        return ""
     }
 }

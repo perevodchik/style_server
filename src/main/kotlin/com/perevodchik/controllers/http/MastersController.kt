@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.*
 import com.perevodchik.repository.CategoriesService
@@ -6,6 +6,7 @@ import com.perevodchik.repository.UsersService
 import com.perevodchik.repository.MastersService
 import com.perevodchik.repository.OrdersService
 import com.perevodchik.utils.DateTimeUtil
+import com.perevodchik.utils.FileUtils
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
@@ -14,6 +15,7 @@ import io.micronaut.security.annotation.Secured
 import io.micronaut.security.authentication.Authentication
 import io.micronaut.security.rules.SecurityRule
 import java.security.Principal
+import java.util.*
 import javax.inject.Inject
 
 @Secured(SecurityRule.IS_ANONYMOUS)
@@ -26,15 +28,21 @@ class MastersController {
     lateinit var usersService: UsersService
     @Inject
     lateinit var categoriesService: CategoriesService
-    @Inject
-    lateinit var ordersService: OrdersService
 
     @Secured(SecurityRule.IS_AUTHENTICATED)
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Get("/list")
-    fun get(authentication: Authentication, @QueryValue(value = "page") page: Int, @QueryValue(value = "limit") limit: Int): HttpResponse<List<UserShortData>> {
-        return HttpResponse.ok(usersService.getMasters(page * limit, limit))
+    fun get(@QueryValue(value = "page") page: Int,
+            @QueryValue(value = "limit") limit: Int,
+            @QueryValue(value = "cities") cities: Optional<String>,
+            @QueryValue(value = "services") services: Optional<String>,
+            @QueryValue(value = "rate") rate: Optional<Boolean>
+            ): HttpResponse<List<UserShortData>> {
+        println("[${cities.orElse("")}] [${cities.isPresent}] [${cities.isEmpty}]")
+        println("[${services.orElse("")}] [${services.isPresent}] [${services.isEmpty}]")
+        println("[${rate.orElse(false)}] [${rate.isPresent}] [${rate.isEmpty}]")
+        return HttpResponse.ok(usersService.getMasters(page * limit, limit, cities.orElse(""), services.orElse(""), rate.orElse(false)))
     }
 
     @Secured(SecurityRule.IS_AUTHENTICATED)
@@ -52,7 +60,7 @@ class MastersController {
     @Produces(MediaType.APPLICATION_JSON)
     @Post("/services/create")
     fun addMasterService(@Body service: ServiceWrapper, authentication: Authentication): HttpResponse<ServiceWrapper> {
-        val master = usersService.getByPhone(authentication.attributes["username"] as String) ?: return HttpResponse.badRequest()
+        usersService.getByPhone(authentication.attributes["username"] as String) ?: return HttpResponse.badRequest()
         service.userId = authentication.attributes["id"] as Int
         return HttpResponse.ok(mastersService.addService(service))
     }
@@ -73,8 +81,7 @@ class MastersController {
     @Produces(MediaType.APPLICATION_JSON)
     @Post("/services/delete")
     fun deleteMasterService(@Body service: ServiceWrapper, authentication: Authentication): HttpResponse<Int> {
-        println("delete $service")
-        val master = usersService.getByPhone(authentication.attributes["username"] as String) ?: return  HttpResponse.badRequest()
+        usersService.getByPhone(authentication.attributes["username"] as String) ?: return  HttpResponse.badRequest()
         return if(mastersService.checkService(authentication.attributes["id"] as Int, service.id))
             HttpResponse.ok(mastersService.deleteService(service))
         else HttpResponse.badRequest(service.id)
@@ -86,13 +93,7 @@ class MastersController {
     @Post("/portfolio/create")
     fun createPortfolioItem(upload: StreamingFileUpload, authentication: Authentication): HttpResponse<PortfolioItem> {
         val master = usersService.getByPhone(authentication.attributes["username"] as String) ?: return HttpResponse.badRequest()
-        val fileName = "${upload.name.length.hashCode()}_${(authentication.attributes["username"] as String).hashCode()}_${DateTimeUtil.timestamp()}"
-                .replace("-", "")
-                .replace(" ", "")
-                .replace(".", "")
-                .replace(":", "")
-                .plus(".jpeg")
-        println(1)
+        val fileName = FileUtils().generateFilePathAndName("portfolios", authentication.attributes["username"] as String, upload.name)
         val item = mastersService.addMasterPortfolio(master.id, fileName, upload)
         return if(item != null)
             HttpResponse.ok(item)

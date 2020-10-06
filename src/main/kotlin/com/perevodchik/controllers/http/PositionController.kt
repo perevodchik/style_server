@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.repository.PositionService
 import com.perevodchik.domain.Position
@@ -24,7 +24,7 @@ class PositionController() {
     @Get("/all")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    fun positions(request: HttpRequest<*>): List<Position> {
+    fun positions(): List<Position> {
         return positionService.getAllPositions()
     }
 

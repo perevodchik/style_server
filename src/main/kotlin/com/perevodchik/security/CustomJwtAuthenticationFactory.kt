@@ -17,7 +17,6 @@ class CustomJwtAuthenticationFactory(): JwtAuthenticationFactory {
     override fun createAuthentication(token: JWT?): Optional<Authentication> {
         try {
             val builder = JWTClaimsSet.Builder()
-//            println(token?.jwtClaimsSet?.toJSONObject().toString())
             builder.claim("username", token?.jwtClaimsSet?.getStringClaim("sub"))
             builder.claim("sub", token?.jwtClaimsSet?.getStringClaim("sub"))
             builder.claim("role", token?.jwtClaimsSet?.getIntegerClaim("role"))

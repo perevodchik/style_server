@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.Category
 import com.perevodchik.domain.Service

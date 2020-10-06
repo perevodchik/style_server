@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.Style
 import com.perevodchik.repository.StylesService
@@ -20,7 +20,7 @@ class StyleController {
     @Get("/all")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    fun positions(request: HttpRequest<*>): HttpResponse<List<Style>> {
+    fun positions(): HttpResponse<List<Style>> {
         return HttpResponse.ok(stylesService.getAllStyles())
     }
 

@@ -1,6 +1,9 @@
 package com.perevodchik.repository.impl
 
 import com.perevodchik.domain.Notification
+import com.perevodchik.domain.NotificationFull
+import com.perevodchik.domain.OrderName
+import com.perevodchik.domain.UserShort
 import com.perevodchik.repository.NotificationsService
 import com.perevodchik.utils.DateTimeUtil
 import javax.inject.Inject
@@ -13,24 +16,68 @@ class NotificationsServiceImpl: NotificationsService {
     lateinit var pool: io.reactiverse.reactivex.pgclient.PgPool
 
     override fun createNotification(notification: Notification): Notification? {
-        val r = pool
+        println("$notification")
+        pool
                 .rxQuery("INSERT INTO notifications " +
                         "(user_id, second_user_id, order_id, notification_type, created_at) VALUES " +
-                        "(${notification.userId}, ${notification.secondUserId}, ${notification.orderId}, ${notification.notificationType}, ${notification.createdAt ?: DateTimeUtil.timestamp()})" +
+                        "(${notification.userId}, ${notification.secondUserId}, ${notification.orderId}, ${notification.notificationType}, '${notification.createdAt ?: DateTimeUtil.timestamp()}')" +
                         " RETURNING notifications.id;")
                 .blockingGet()
         return null
     }
 
-    override fun getNotifications(userId: Int, page: Int, limit: Int): List<Notification> {
-        val notifications = mutableListOf<Notification>()
-
-        val r = pool
-                .rxQuery("SELECT * FROM notifications WHERE user_id = $userId ORDER BY id DESC OFFSET $page LIMIT $limit;")
+    override fun getNotifications(userId: Int): List<NotificationFull> {
+        val notifications = mutableListOf<NotificationFull>()
+        val result = pool
+                .rxQuery("SELECT n.id, n.notification_type, n.created_at, n.is_dirty, " +
+                        "u.id as user_id, u.name as user_name, u.surname as user_surname, " +
+                        "s.id as second_user_id, s.name as second_user_name, s.surname as second_user_surname, " +
+                        "o.id as order_id, o.name as order_name " +
+                        "FROM notifications n " +
+                        "LEFT JOIN users u ON u.id = n.user_id " +
+                        "LEFT JOIN users s ON s.id = n.second_user_id " +
+                        "LEFT JOIN orders o ON o.id = n.order_id " +
+                        "WHERE user_id = $userId " +
+                        "ORDER BY id DESC LIMIT 100;")
                 .blockingGet()
-        val i = r.iterator()
+        val i = result.iterator()
         while(i.hasNext()) {
             val r = i.next()
+            var userData: UserShort? = null
+            if(r.getInteger("user_id") != null) {
+                userData = UserShort(
+                        id = r.getInteger("user_id"),
+                        name = r.getString("user_name"),
+                        surname = r.getString("user_surname"),
+                        avatar = ""
+                )
+            }
+            var secondUserData: UserShort? = null
+            if(r.getInteger("second_user_id") != null) {
+                secondUserData = UserShort(
+                        id = r.getInteger("second_user_id"),
+                        name = r.getString("second_user_name"),
+                        surname = r.getString("second_user_surname"),
+                        avatar = ""
+                )
+            }
+            var order: OrderName? = null
+            if(r.getInteger("order_id") != null) {
+                order = OrderName(
+                        id = r.getInteger("order_id"),
+                        name = r.getString("order_name")
+                )
+            }
+            val notificationFull = NotificationFull(
+                    id = r.getInteger("id"),
+                    user = userData,
+                    secondUser = secondUserData,
+                    order = order,
+                    notificationType = r.getInteger("notification_type"),
+                    isDirty = r.getBoolean("is_dirty"),
+                    createdAt = r.getString("created_at")
+            )
+            notifications.add(notificationFull)
         }
         return notifications
     }

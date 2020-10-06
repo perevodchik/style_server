@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.repository.CitiesService
 import io.micronaut.http.HttpResponse

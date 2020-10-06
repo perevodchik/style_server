@@ -4,8 +4,17 @@ import com.perevodchik.domain.*
 import com.perevodchik.repository.OrdersService
 import com.perevodchik.repository.SentenceService
 import com.perevodchik.utils.DateTimeUtil
+import com.perevodchik.utils.FileUtils
+import io.micronaut.http.HttpResponse
+import io.micronaut.http.MediaType
+import io.micronaut.http.annotation.Consumes
+import io.micronaut.http.annotation.Post
+import io.micronaut.http.annotation.Produces
+import io.micronaut.http.multipart.StreamingFileUpload
 import io.micronaut.security.annotation.Secured
+import io.micronaut.security.authentication.Authentication
 import io.micronaut.security.rules.SecurityRule
+import java.lang.Exception
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,12 +25,34 @@ class OrdersServiceImpl: OrdersService {
     lateinit var pool: io.reactiverse.reactivex.pgclient.PgPool
 
     override fun isClientRecordedToMaster(firstUserId: Int, secondUserId: Int): Boolean {
+        if(firstUserId == secondUserId)
+            return true
+        println("SELECT COUNT(id) as count FROM orders WHERE ((master_id = $secondUserId AND client_id = $firstUserId) OR (client_id = $secondUserId AND master_id = $firstUserId)) AND (status = 3 OR status = 2);")
         val r = pool.rxQuery("SELECT COUNT(id) as count FROM orders WHERE ((master_id = $secondUserId AND client_id = $firstUserId) OR (client_id = $secondUserId AND master_id = $firstUserId)) AND (status = 3 OR status = 2);").blockingGet()
-        return r.iterator().hasNext()
+        val c = r.iterator().next().getInteger("count")
+        println("records count for $firstUserId AND $secondUserId = $c")
+        return (c > 0)
     }
 
-    override fun getAvailableOrders(page: Int, limit: Int): List<AvailableOrderPreview> {
-        val r = pool.rxQuery("SELECT orders.id, orders.name, orders.description, orders.price, orders.created_at FROM orders WHERE status = 0 AND orders.master_id IS NULL AND orders.is_private = FALSE ORDER BY orders.id DESC OFFSET $page LIMIT $limit;").blockingGet()
+    override fun getAvailableOrders(page: Int, limit: Int, cities: String, services: String, withPrice: Boolean, withCity: Boolean): List<AvailableOrderPreview> {
+        val q = "SELECT o.id, o.name, o.description, o.price, o.created_at FROM orders o " +
+                "WHERE status = 0 " +
+                "AND o.master_id IS NULL " +
+                "AND o.is_private = FALSE " +
+                (if(cities.isNotEmpty()) "AND o.city_id IN ($cities) " else "") +
+                (if(services.isNotEmpty()) {
+                    var servicesString = ""
+                    for(s in services.split(","))
+                        servicesString += "'$s',"
+                    if(servicesString.endsWith(","))
+                        servicesString = servicesString.substring(0, servicesString.length - 1)
+                    "AND (SELECT ARRAY[array_agg(distinct order_services.service_id)] as services FROM orders LEFT JOIN order_services ON o.id = order_services.order_id) && ARRAY[$servicesString]::int[] "
+                } else "") +
+                (if(withPrice) "AND o.price IS NOT NULL AND o.price > 0 " else "") +
+                (if(withCity) "AND o.city_id IS NOT NULL " else "") +
+                "ORDER BY o.id DESC OFFSET $page LIMIT $limit;"
+        println(q)
+        val r = pool.rxQuery(q).blockingGet()
         val i = r.iterator()
         val orders = mutableListOf<AvailableOrderPreview>()
         while(i.hasNext()) {
@@ -73,9 +104,9 @@ class OrdersServiceImpl: OrdersService {
 
         val r = pool.rxQuery(
                 "INSERT INTO orders (" +
-                        "client_id, master_id, sketch_id, sketch_data_id, status, price, name, description, is_private" +
+                        "client_id, master_id, sketch_id, city_id, sketch_data_id, status, price, name, description, is_private" +
                         ") VALUES (" +
-                        "${clientId}, ${order.masterId}, ${order.sketchId}, $sketchDataId, ${order.status}, ${order.price}, '${order.name}', '${order.description}', ${order.isPrivate}" +
+                        "${clientId}, ${order.masterId}, ${order.sketchId}, ${order.cityId}, $sketchDataId, ${order.status}, ${order.price}, '${order.name}', '${order.description}', ${order.isPrivate}" +
                         ") RETURNING orders.id;"
         ).blockingGet()
         val i = r.iterator()
@@ -115,14 +146,40 @@ class OrdersServiceImpl: OrdersService {
     }
 
     override fun getOrderById(id: Int, sentenceService: SentenceService): OrderFull? {
-        val r = pool.rxQuery("SELECT orders.id, orders.status, users.id as client_id, users.name as client_name, users.surname as client_surname, users.avatar as client_avatar, orders.name, orders.description, orders.price, master.id as master_id, master.name as master_name, master.surname as master_surname, master.avatar as master_avatar, positions.id as position_id, positions.name as position_name, styles.id as style_id, styles.name as style_name, data.id as sketch_data_id, data.width, data.height, data.is_colored,orders.is_private, orders.created_at as created FROM orders LEFT JOIN sketch_data as data ON data.id = orders.sketch_data_id LEFT JOIN positions ON data.position_id = positions.id LEFT JOIN styles ON data.style_id = styles.id JOIN users ON users.id = orders.client_id LEFT JOIN users as master ON master.id = orders.master_id " +
-                "WHERE orders.id = $id;").blockingGet()
+        val q = "SELECT orders.id, orders.status, " +
+                "users.id as client_id, users.name as client_name, users.surname as client_surname, users.avatar as client_avatar, " +
+                "orders.name, orders.description, orders.price, " +
+                "cities.id as city_id, cities.name as city_name, " +
+                "master.id as master_id, master.name as master_name, master.surname as master_surname, master.avatar as master_avatar, " +
+                "positions.id as position_id, positions.name as position_name, " +
+                "styles.id as style_id, styles.name as style_name, data.id as sketch_data_id, " +
+                "data.width, data.height, data.is_colored, " +
+                "string_agg(distinct order_photos.image, ',') as photos, " +
+                "orders.is_private, orders.created_at as created, orders.client_comment_id, orders.master_comment_id " +
+                "FROM orders " +
+                "LEFT JOIN sketch_data as data ON data.id = orders.sketch_data_id " +
+                "LEFT JOIN positions ON data.position_id = positions.id " +
+                "LEFT JOIN styles ON data.style_id = styles.id " +
+                "LEFT JOIN cities ON orders.city_id = cities.id " +
+                "LEFT JOIN order_photos ON orders.id = order_photos.order_id " +
+                "JOIN users ON users.id = orders.client_id " +
+                "LEFT JOIN users as master ON master.id = orders.master_id " +
+                "WHERE orders.id = $id GROUP BY orders.id, users.id, cities.id, styles.id, positions.id, master.id, data.id;"
+        val r = pool.rxQuery(q).blockingGet()
         val i0 = r.iterator()
         if(i0.hasNext()) {
             val row = i0.next()
             val position: Position?
             val style: Style?
+            var city: City? = null
             var sketchData: SketchDataFull? = null
+            var masterData: UserShort? = null
+            val clientData = UserShort(
+                    id = row.getInteger("client_id"),
+                    name = row.getString("client_name"),
+                    surname = row.getString("client_surname"),
+                    avatar = row.getString("client_avatar")
+            )
             if(row.getInteger("sketch_data_id") != null) {
                 position = Position(
                         row.getInteger("position_id"),
@@ -141,13 +198,11 @@ class OrdersServiceImpl: OrdersService {
                         isColored = row.getBoolean("is_colored")
                 )
             }
-            val clientData = UserShort(
-                    id = row.getInteger("client_id"),
-                    name = row.getString("client_name"),
-                    surname = row.getString("client_surname"),
-                    avatar = row.getString("client_avatar")
-            )
-            var masterData: UserShort? = null
+            if(row.getInteger("city_id") != null)
+                city = City(
+                        id = row.getInteger("city_id"),
+                        name = row.getString("city_name")
+                )
             if(row.getInteger("master_id") != null) {
                 masterData = UserShort(
                         id = row.getInteger("master_id"),
@@ -163,13 +218,17 @@ class OrdersServiceImpl: OrdersService {
                     price = row.getInteger("price"),
                     name = row.getString("name"),
                     description = row.getString("description"),
+                    photos = row.getString("photos") ?: "",
                     isPrivate = row.getBoolean("is_private"),
                     sketchData = sketchData,
                     client = clientData,
                     master = masterData,
+                    city = city,
                     created = row.getString("created") ?: DateTimeUtil.timestamp(),
                     sentences = sentences,
-                    services = mutableListOf()
+                    services = mutableListOf(),
+                    clientComment = null,
+                    masterComment = null
             )
             val serviceIds = mutableListOf<Int>()
             val r1 = pool.rxQuery("SELECT service_id FROM order_services WHERE order_id = ${order.id}").blockingGet()
@@ -178,15 +237,64 @@ class OrdersServiceImpl: OrdersService {
                 serviceIds.add(i1.next().getInteger("service_id"))
             }
             if(serviceIds.isNotEmpty()) {
-                val q = "SELECT services.name FROM services WHERE id IN (${serviceIds.joinToString(", ")});"
-                println(q)
-                val r2 = pool.rxQuery(q).blockingGet()
+                val r2 = pool.rxQuery("SELECT services.name FROM services WHERE id IN (${serviceIds.joinToString(", ")});").blockingGet()
                 val i2 = r2.iterator()
                 while(i2.hasNext()) {
                     order.services.add(i2.next().getString("name"))
                 }
             }
-            println("$order")
+            if(row.getInteger("client_comment_id") != null) {
+                val r2 = pool
+                        .rxQuery("SELECT comments.id as comment_id, comments.target_id, comments.commentator_id, " +
+                                "users.name, users.surname, users.avatar, " +
+                                "comments.rate, comments.message, comments.created_at " +
+                                "FROM comments " +
+                                "INNER JOIN users ON users.id = comments.commentator_id " +
+                                "WHERE comments.id = ${row.getInteger("client_comment_id")};")
+                        .blockingGet()
+                val i = r2.iterator()
+                if(i.hasNext()) {
+                    val row1 = i.next()
+                    val comment = CommentFull(
+                            id = row1.getInteger("comment_id"),
+                            targetId = row1.getInteger("target_id"),
+                            commentatorId = row1.getInteger("commentator_id"),
+                            commentatorName = row1.getString("name"),
+                            commentatorSurname = row1.getString("surname"),
+                            commentatorAvatar = row1.getString("avatar"),
+                            message = row1.getString("message"),
+                            rate = row1.getDouble("rate"),
+                            createdAt = row1.getString("createdAt") ?: DateTimeUtil.timestamp()
+                    )
+                    order.clientComment = comment
+                }
+            }
+            if(row.getInteger("master_comment_id") != null) {
+                val r2 = pool
+                        .rxQuery("SELECT comments.id as comment_id, comments.target_id, comments.commentator_id, " +
+                                "users.name, users.surname, users.avatar, " +
+                                "comments.rate, comments.message, comments.created_at " +
+                                "FROM comments " +
+                                "INNER JOIN users ON users.id = comments.commentator_id " +
+                                "WHERE comments.id = ${row.getInteger("master_comment_id")};")
+                        .blockingGet()
+                val i = r2.iterator()
+                if(i.hasNext()) {
+                    val row1 = i.next()
+                    val comment = CommentFull(
+                            id = row1.getInteger("comment_id"),
+                            targetId = row1.getInteger("target_id"),
+                            commentatorId = row1.getInteger("commentator_id"),
+                            commentatorName = row1.getString("name"),
+                            commentatorSurname = row1.getString("surname"),
+                            commentatorAvatar = row1.getString("avatar"),
+                            message = row1.getString("message"),
+                            rate = row1.getDouble("rate"),
+                            createdAt = row1.getString("createdAt") ?: DateTimeUtil.timestamp()
+                    )
+                    order.masterComment = comment
+                }
+            }
             return order
         }
         return null
@@ -220,5 +328,43 @@ class OrdersServiceImpl: OrdersService {
             )
         }
         return null
+    }
+
+    override fun upload(orderId: Int, fileName: String, upload: StreamingFileUpload): String {
+        try {
+            val uploadResult = FileUtils().uploadFile(upload, fileName)
+            if(uploadResult.isNotEmpty() && uploadResult.isNotBlank()) {
+                val r = pool.rxQuery("INSERT INTO order_photos (image, order_id) VALUES ('$uploadResult', $orderId);").blockingGet()
+                if(r.rowCount() == 0) {
+                    FileUtils().deleteFile("static/$uploadResult")
+                    return ""
+                }
+                return uploadResult
+            }
+            return ""
+        } catch(ex: Exception) {
+            println(ex.localizedMessage)
+            return ""
+        }
+    }
+
+    override fun addExistingImage(existingImage: ExistingImage): String {
+        val q = "INSERT INTO order_photos (image, order_id) VALUES ('${existingImage.image}', ${existingImage.orderId});"
+        println(q)
+        val r = pool.rxQuery(q).blockingGet()
+        return if(r.rowCount() > 0)
+            existingImage.image
+        else return ""
+    }
+
+    override fun isPhotoUseInOrder(image: String): Boolean {
+        val r = pool.rxQuery("SELECT COUNT(id) as count FROM order_photos WHERE image = '$image';").blockingGet()
+        val i = r.iterator()
+        if(i.hasNext()) {
+            val row = i.next()
+            val count = row.getInteger("count")
+            return count > 0
+        }
+        return false
     }
 }

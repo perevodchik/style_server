@@ -1,8 +1,11 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
+import com.perevodchik.domain.Phone
 import com.perevodchik.domain.User
+import com.perevodchik.domain.UserUpdatePayload
 import com.perevodchik.repository.*
-import com.perevodchik.utils.DateTimeUtil
+import com.perevodchik.security.AuthStorage
+import com.perevodchik.utils.FileUtils
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
@@ -10,7 +13,6 @@ import io.micronaut.http.multipart.StreamingFileUpload
 import io.micronaut.security.annotation.Secured
 import io.micronaut.security.authentication.Authentication
 import io.micronaut.security.rules.SecurityRule
-import java.security.Principal
 import javax.inject.Inject
 
 @Secured(SecurityRule.IS_ANONYMOUS)
@@ -33,9 +35,8 @@ class UsersController {
     @Produces(MediaType.APPLICATION_JSON)
     @Get("/current")
     fun current(authentication: Authentication): HttpResponse<User> {
-        for(s in authentication.attributes)
-            println("${s.key} | ${s.value}")
         val user = usersService.getByPhone(authentication.attributes["username"] as String) ?: return HttpResponse.badRequest()
+        print("current is $user")
         return HttpResponse.ok(user)
     }
 
@@ -53,8 +54,9 @@ class UsersController {
     @Produces(MediaType.APPLICATION_JSON)
     @Post("/exist")
     fun isUserExist(phone: String, role: Int): HttpResponse<User> {
-        val client = usersService.getByPhone(phone) ?: return HttpResponse.badRequest()
-        if(client.role != role) return HttpResponse.badRequest()
+        val user = usersService.getByPhone(phone) ?: return HttpResponse.badRequest()
+        if(user.role != role) return HttpResponse.badRequest()
+        AuthStorage.createCode(Phone(phone))
         return HttpResponse.ok()
     }
 
@@ -63,29 +65,25 @@ class UsersController {
     @Produces(MediaType.APPLICATION_JSON)
     @Get("/full/{id}")
     fun getFullById(authentication: Authentication, @PathVariable id: Int): HttpResponse<User> {
+        val currentUserId = authentication.attributes["id"] as Int
         val user = usersService.getById(id) ?: return HttpResponse.badRequest()
+        println("$user")
         val categories = categoriesService.getAll()
         val services = mastersService.getServiceByMaster(id)
 
         user.services = mastersService.getFullServiceByMaster(categories, services)
         user.photos = mastersService.getMasterPhotos(user.id)
         user.commentsCount = commentsService.commentsCount(id)
-        user.comments = commentsService.getCommentsByUserIdLimited(id, 3).toMutableList()
-        if((authentication.attributes["id"] as Int) != id) {
-            val currentRole = (authentication.attributes["role"] as Int)
-            if(user.role != currentRole) {
-                user.isRecorded = ordersService.isClientRecordedToMaster(user.id, id)
-            }
-            if(!user.isShowAddress)
+        user.comments = commentsService.getCommentsByUserIdLimited(id, 2).toMutableList()
+        if(currentUserId != id) {
+            user.isRecorded = ordersService.isClientRecordedToMaster(currentUserId, id)
+            if(!user.isShowAddress || !user.isRecorded)
                 user.address = ""
-            if(!user.isShowPhone)
+            if(!user.isShowPhone || !user.isRecorded)
                 user.phone = ""
-            if(!user.isShowEmail)
+            if(!user.isShowEmail || !user.isRecorded)
                 user.email = ""
         }
-
-        println("__ $user __")
-
         return HttpResponse.ok(user)
     }
 
@@ -93,8 +91,18 @@ class UsersController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Get("/{id}")
-    fun getById(@PathVariable id: Int): HttpResponse<User> {
+    fun getById(authentication: Authentication, @PathVariable id: Int): HttpResponse<User> {
+        val currentUserId = authentication.attributes["id"] as Int
         val user = usersService.getById(id) ?: return HttpResponse.badRequest()
+        if(currentUserId != id) {
+            user.isRecorded = ordersService.isClientRecordedToMaster(currentUserId, id)
+            if(!user.isShowAddress || !user.isRecorded)
+                user.address = ""
+            if(!user.isShowPhone || !user.isRecorded)
+                user.phone = ""
+            if(!user.isShowEmail || !user.isRecorded)
+                user.email = ""
+        }
         return HttpResponse.ok(user)
     }
 
@@ -110,7 +118,7 @@ class UsersController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Post(value = "/update")
-    fun update(user: User, authentication: Authentication): HttpResponse<User> {
+    fun update(user: UserUpdatePayload, authentication: Authentication): HttpResponse<UserUpdatePayload> {
         return HttpResponse.ok(usersService.update(user, authentication))
     }
 
@@ -128,11 +136,12 @@ class UsersController {
     @Secured(SecurityRule.IS_AUTHENTICATED)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Post("/avatar")
-    fun uploadAvatar(upload: StreamingFileUpload, principal: Principal) {
-        println("0")
-        val name = "${upload.name.hashCode()}${principal.name.split(":")[1].hashCode()}${DateTimeUtil.timestamp()}"
-        println("1")
-        usersService.upload(principal.name.split(":")[1], name, upload)
-        println("2")
+    fun uploadAvatar(upload: StreamingFileUpload, authentication: Authentication): HttpResponse<String> {
+        val fileName = FileUtils().generateFilePathAndName("avatars", authentication.attributes["username"] as String, upload.name)
+        println("fileName $fileName")
+        val result = usersService.upload(authentication.attributes["username"] as String, fileName, upload)
+        return if(result.isNotBlank() && result.isNotEmpty())
+            HttpResponse.ok(result)
+        else HttpResponse.badRequest()
     }
 }

@@ -2,6 +2,7 @@ package com.perevodchik.repository.impl
 
 import com.perevodchik.domain.City
 import com.perevodchik.repository.CitiesService
+import java.nio.charset.Charset
 import javax.inject.Inject
 
 class CitiesServiceImpl: CitiesService {
@@ -9,6 +10,7 @@ class CitiesServiceImpl: CitiesService {
     @Inject
     lateinit var pool: io.reactiverse.reactivex.pgclient.PgPool
 
+    @ExperimentalStdlibApi
     override fun get(): List<City> {
         val cities = mutableListOf<City>()
         val r = pool.rxQuery(
@@ -21,6 +23,7 @@ class CitiesServiceImpl: CitiesService {
                     row.getInteger("id"),
                     row.getString("name")
             )
+            println("$city")
             cities.add(city)
         }
         return cities

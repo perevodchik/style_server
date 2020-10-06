@@ -8,13 +8,17 @@ data class OrderFull(
         var price: Int = 0,
         var name: String,
         var description: String,
+        var photos: String,
         var isPrivate: Boolean = false,
         var client: UserShort,
         var master: UserShort?,
+        var city: City?,
         val sketchData: SketchDataFull?,
         var created: String = DateTimeUtil.timestamp(),
         var sentences: List<SentenceFull>,
-        var services: MutableList<String>
+        var services: MutableList<String>,
+        var clientComment: CommentFull?,
+        var masterComment: CommentFull?
 )
 
 data class Order(
@@ -36,6 +40,7 @@ data class Order(
 data class OrderShort(
         var masterId: Int?,
         var sketchId: Int?,
+        var cityId: Int?,
         var status: Int = 0,
         var price: Int = 0,
         var name: String,

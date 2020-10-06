@@ -1,6 +1,7 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.Comment
+import com.perevodchik.domain.CommentFull
 import com.perevodchik.domain.Notification
 import com.perevodchik.enums.NotificationType
 import com.perevodchik.repository.CommentsService
@@ -26,9 +27,9 @@ class CommentsController {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @Post("/create")
-    fun createComment(@Body comment: Comment, authentication: Authentication): HttpResponse<Comment> {
+    fun createComment(comment: Comment, authentication: Authentication): HttpResponse<Comment> {
         val userId = authentication.attributes["id"] as Int
-        val createdComment = commentsService.createComment(comment) ?: return HttpResponse.badRequest()
+        val createdComment = commentsService.createComment(comment, authentication.attributes["role"] as Int) ?: return HttpResponse.badRequest()
         println("$createdComment")
         notificationsService.createNotification(
                 Notification(
@@ -41,5 +42,13 @@ class CommentsController {
                 )
         )
         return HttpResponse.ok(createdComment)
+    }
+
+    @Secured(SecurityRule.IS_AUTHENTICATED)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Get("/list/{userId}")
+    fun getUserComments(@PathVariable userId: Int): HttpResponse<List<CommentFull>> {
+        return HttpResponse.ok(commentsService.getCommentsByUserId(userId))
     }
 }

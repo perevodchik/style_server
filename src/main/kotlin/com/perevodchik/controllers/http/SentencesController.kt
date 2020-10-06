@@ -1,4 +1,4 @@
-package com.perevodchik.controllers
+package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.*
 import com.perevodchik.enums.NotificationType
@@ -27,7 +27,7 @@ class SentencesController {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @Post("/test/{orderId}")
-    fun test(@PathVariable orderId: Int,  authentication: Authentication): HttpResponse<*> {
+    fun test(@PathVariable orderId: Int): HttpResponse<*> {
         println("test")
         return HttpResponse.ok(sentenceService.test(orderId))
     }
@@ -55,7 +55,7 @@ class SentencesController {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @Get("/{orderId}")
-    fun getByOrder(@PathVariable orderId: Int, authentication: Authentication): HttpResponse<List<SentenceFull>> {
+    fun getByOrder(@PathVariable orderId: Int): HttpResponse<List<SentenceFull>> {
         return HttpResponse.ok(sentenceService.getSentencesByOrder(orderId))
     }
 
@@ -74,7 +74,7 @@ class SentencesController {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @Get("/comments/{sentenceId}")
-    fun getComments(@PathVariable sentenceId: Int, authentication: Authentication): HttpResponse<List<SentenceComment>> {
+    fun getComments(@PathVariable sentenceId: Int): HttpResponse<List<SentenceComment>> {
         return HttpResponse.ok(sentenceService.getComments(sentenceId))
     }
 
