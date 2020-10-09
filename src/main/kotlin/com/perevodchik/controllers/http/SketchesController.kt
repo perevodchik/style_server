@@ -39,7 +39,8 @@ class SketchesController {
 
     @Secured(SecurityRule.IS_AUTHENTICATED)
     @Get("/list")
-    fun list(@QueryValue(value = "tags") tags: Optional<String>,
+    fun list(authentication: Authentication,
+             @QueryValue(value = "tags") tags: Optional<String>,
              @QueryValue(value = "favorites") isFavorites: Optional<Boolean>,
              @QueryValue(value = "min") minPrice: Optional<Int>,
              @QueryValue(value = "max") maxPrice: Optional<Int>,
@@ -55,7 +56,13 @@ class SketchesController {
                 tgs.add("\'${if(t.startsWith("#")) t else "#$t"}\'")
         }
         tagsString = tgs.joinToString(",")
-        return sketchesService.getList(varPage * varLimit, varLimit, minPrice.orElse(-1), maxPrice.orElse(-1), tagsString, isFavorites.orElse(false))
+        return sketchesService.getList(authentication.attributes["id"] as Int,
+                varPage * varLimit,
+                varLimit,
+                minPrice.orElse(-1),
+                maxPrice.orElse(-1),
+                tagsString,
+                isFavorites.orElse(false))
     }
 
     @Secured(SecurityRule.IS_AUTHENTICATED)

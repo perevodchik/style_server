@@ -13,7 +13,7 @@ import javax.inject.Singleton
 interface ConversionsService {
     fun createConversion(clientId: Int, masterId: Int): Optional<ConversionPreview>
     fun getConversions(userId: Int, label: Boolean): List<ConversionPreview>
-    fun getConversion(conversionId: Int): Optional<ConversionPreview>
+    fun getConversion(conversionId: Int, label: Boolean): Optional<ConversionPreview>
     fun getConversion(clientId: Int, masterId: Int): Optional<ConversionPreview>
     fun sendMessage(message: Message): Optional<Message>
     fun getMessagesByConversion(conversionId: Int, userId: Int, page: Optional<Int>, limit: Optional<Int>): JsonObject
@@ -29,13 +29,20 @@ class ConversionsServiceImpl: ConversionsService {
     override fun createConversion(clientId: Int, masterId: Int): Optional<ConversionPreview> {
         val conversion = getConversion(clientId, masterId)
         if(conversion.isEmpty) {
-            val r = pool.rxQuery("INSERT INTO conversions (client_id, master_id) VALUES ($clientId, $masterId) RETURNING conversions.id;").blockingGet()
+            val q = "INSERT INTO conversions (client_id, master_id) VALUES ($clientId, $masterId) RETURNING conversions.id;"
+            println("weadfefaedf")
+            val r = pool.rxQuery(q).blockingGet()
+            println(q)
             val i = r.iterator()
             if(i.hasNext()) {
                 val row = i.next()
-                pool.rxQuery("INSERT INTO conversion_data (user_id, conversion_id) VALUES ($clientId, ${row.getInteger("id")});").blockingGet()
-                pool.rxQuery("INSERT INTO conversion_data (user_id, conversion_id) VALUES ($masterId, ${row.getInteger("id")});").blockingGet()
-                return getConversion(i.next().getInteger("id"))
+                val q0 = "INSERT INTO conversion_data (user_id, conversion_id) VALUES ($clientId, ${row.getInteger("id")});"
+                pool.rxQuery(q0).blockingGet()
+                println(q0)
+                val q1 = "INSERT INTO conversion_data (user_id, conversion_id) VALUES ($masterId, ${row.getInteger("id")});"
+                pool.rxQuery(q1).blockingGet()
+                println(q1)
+                return getConversion(row.getInteger("id"), false)
             }
         }
         return Optional.empty()
@@ -78,12 +85,16 @@ class ConversionsServiceImpl: ConversionsService {
         return conversions
     }
 
-    override fun getConversion(conversionId: Int): Optional<ConversionPreview> {
-        val r = pool.rxQuery("SELECT c.id, m.id as message_id, m.sender_id as sender, m.message, m.has_media, m.created_at, u.name, u.surname, u.avatar\n" +
+    // insert into messages (sender_id, conversion_id, message) VALUES (45, 8, 'text');
+
+    override fun getConversion(conversionId: Int, label: Boolean): Optional<ConversionPreview> {
+        val q = "SELECT c.id, m.id as message_id, m.sender_id as sender, m.message, m.has_media, m.created_at, u.id as user_id, u.name, u.surname, u.avatar " +
                 "FROM conversions c " +
-                "RIGHT JOIN messages m ON m.id = c.last_message_id " +
-                "RIGHT JOIN users u ON u.id = c.master_id " +
-                "WHERE c.id = $conversionId;").blockingGet()
+                "LEFT JOIN messages m ON m.id = c.last_message_id " +
+                "RIGHT JOIN users u ON u.id = ${if(!label) "c.master_id" else "c.client_id"} " +
+                "WHERE c.id = $conversionId;"
+        println(q)
+        val r = pool.rxQuery(q).blockingGet()
         val i = r.iterator()
         if(i.hasNext()) {
             val row = i.next()
@@ -91,12 +102,12 @@ class ConversionsServiceImpl: ConversionsService {
                     id = row.getInteger("id"),
                     lastReadMessageId = -1,
                     user = UserShort(
-                            id = row.getInteger("sender"),
+                            id = row.getInteger("user_id"),
                             name = row.getString("name") ?: "",
                             surname = row.getString("surname") ?: "",
                             avatar = row.getString("avatar") ?: ""
                     ),
-                    message = Message(
+                    message = if(row.getInteger("message_id") != null) Message(
                             id = row.getInteger("message_id"),
                             conversionId = row.getInteger("id"),
                             senderId = row.getInteger("sender"),
@@ -104,7 +115,7 @@ class ConversionsServiceImpl: ConversionsService {
                             hasMedia = row.getBoolean("has_media") ?: false,
                             createdAt = row.getString("created_at") ?: DateTimeUtil.timestamp(),
                             receiverId = -1
-                    )
+                    ) else null
             )
             return Optional.of(conversionPreview)
         }
@@ -112,11 +123,14 @@ class ConversionsServiceImpl: ConversionsService {
     }
 
     override fun getConversion(clientId: Int, masterId: Int): Optional<ConversionPreview> {
-        val r = pool.rxQuery("SELECT c.id, m.id as message_id, m.sender_id as sender, m.message, m.has_media, m.created_at, u.name, u.surname, u.avatar\n" +
+        val q = "SELECT c.id, m.id as message_id, m.sender_id as sender, m.message, m.has_media, m.created_at, u.id as user_id, u.name, u.surname, u.avatar " +
                 "FROM conversions c " +
-                "RIGHT JOIN messages m ON m.id = c.last_message_id " +
+                "LEFT JOIN messages m ON m.id = c.last_message_id " +
                 "RIGHT JOIN users u ON u.id = c.master_id " +
-                "WHERE c.client_id = $clientId AND c.master_id = $masterId;").blockingGet()
+                "WHERE c.client_id = $clientId AND c.master_id = $masterId;"
+        println(q)
+        val r = pool.rxQuery(q).blockingGet()
+        println("qqqq111")
         val i = r.iterator()
         if(i.hasNext()) {
             val row = i.next()
@@ -124,20 +138,21 @@ class ConversionsServiceImpl: ConversionsService {
                     id = row.getInteger("id"),
                     lastReadMessageId = -1,
                     user = UserShort(
-                            id = row.getInteger("sender_id"),
+                            id = row.getInteger("user_id"),
                             name = row.getString("name") ?: "",
                             surname = row.getString("surname") ?: "",
                             avatar = row.getString("avatar") ?: ""
                     ),
-                    message = Message(
-                            id = row.getInteger("message_id"),
-                            conversionId = row.getInteger("id"),
-                            senderId = row.getInteger("sender_id"),
-                            message = row.getString("message") ?: "",
-                            hasMedia = row.getBoolean("has_media") ?: false,
-                            createdAt = row.getString("created_at") ?: DateTimeUtil.timestamp(),
-                            receiverId = -1
-                    )
+                    message = if(row.getInteger("") == null) null
+                        else Message(
+                                    id = row.getInteger("message_id"),
+                                    conversionId = row.getInteger("id"),
+                                    senderId = row.getInteger("sender_id"),
+                                    message = row.getString("message") ?: "",
+                                    hasMedia = row.getBoolean("has_media") ?: false,
+                                    createdAt = row.getString("created_at") ?: DateTimeUtil.timestamp(),
+                                    receiverId = -1
+                            )
             )
             return Optional.of(conversionPreview)
         }

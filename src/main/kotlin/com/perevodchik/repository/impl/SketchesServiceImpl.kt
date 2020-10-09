@@ -27,14 +27,14 @@ class SketchesServiceImpl: SketchesService {
         return sketches
     }
 
-    override fun getList(page: Int, limit: Int, min: Int, max: Int, tags: String, isFavorite:Boolean): List<SketchPreview> {
+    override fun getList(userId: Int, page: Int, limit: Int, min: Int, max: Int, tags: String, isFavorite:Boolean): List<SketchPreview> {
         val filters = mutableListOf<String>()
         if(min > 0)
             filters.add("s.price >= $min")
         if(max > 0)
             filters.add("s.price <= $max")
         if(isFavorite)
-            filters.add("(SELECT COUNT(sketch_id) FROM user_favorite_sketches f WHERE f.sketch_id = s.id AND user_id = 2) > 0")
+            filters.add("(SELECT COUNT(sketch_id) FROM user_favorite_sketches f WHERE f.sketch_id = s.id AND user_id = $userId) > 0")
         if(tags.isNotEmpty() && tags.isNotBlank())
             filters.add("ARRAY[$tags] && (SELECT STRING_TO_ARRAY(tags, ','))")
 
@@ -46,6 +46,7 @@ class SketchesServiceImpl: SketchesService {
                 "LEFT JOIN sketch_photos ON s.id = sketch_photos.sketch_id " +
                 (if(filters.isNotEmpty()) "WHERE ${filters.joinToString(" AND ")} " else "") +
                 "GROUP BY s.id ORDER BY id DESC  OFFSET $page LIMIT $limit;"
+        print(q)
         val r = pool.rxQuery(q).blockingGet()
         val i = r.iterator()
         val sketches = mutableListOf<SketchPreview>()

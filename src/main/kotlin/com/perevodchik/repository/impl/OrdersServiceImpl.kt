@@ -25,10 +25,8 @@ class OrdersServiceImpl: OrdersService {
     lateinit var pool: io.reactiverse.reactivex.pgclient.PgPool
 
     override fun isClientRecordedToMaster(firstUserId: Int, secondUserId: Int): Boolean {
-        if(firstUserId == secondUserId)
-            return true
-        println("SELECT COUNT(id) as count FROM orders WHERE ((master_id = $secondUserId AND client_id = $firstUserId) OR (client_id = $secondUserId AND master_id = $firstUserId)) AND (status = 3 OR status = 2);")
-        val r = pool.rxQuery("SELECT COUNT(id) as count FROM orders WHERE ((master_id = $secondUserId AND client_id = $firstUserId) OR (client_id = $secondUserId AND master_id = $firstUserId)) AND (status = 3 OR status = 2);").blockingGet()
+        println("SELECT COUNT(id) as count FROM orders WHERE ((master_id = $secondUserId AND client_id = $firstUserId) OR (client_id = $secondUserId AND master_id = $firstUserId)) AND status = 2;")
+        val r = pool.rxQuery("SELECT COUNT(id) as count FROM orders WHERE ((master_id = $secondUserId AND client_id = $firstUserId) OR (client_id = $secondUserId AND master_id = $firstUserId)) AND status = 2;").blockingGet()
         val c = r.iterator().next().getInteger("count")
         println("records count for $firstUserId AND $secondUserId = $c")
         return (c > 0)
@@ -309,8 +307,10 @@ class OrdersServiceImpl: OrdersService {
     }
 
     override fun updateOrderStatus(orderId: Int, status: Int, masterId: Int?): Boolean {
+        println("updateOrderStatus staer")
         val additionalArgs = if(masterId == null) "" else ", master_id = $masterId"
         val r = pool.rxQuery("UPDATE orders SET status = $status $additionalArgs WHERE id = $orderId;").blockingGet()
+        println("updateOrderStatus end")
         return r.rowCount() > 0
     }
 

@@ -17,12 +17,12 @@ class NotificationsServiceImpl: NotificationsService {
 
     override fun createNotification(notification: Notification): Notification? {
         println("$notification")
-        pool
-                .rxQuery("INSERT INTO notifications " +
-                        "(user_id, second_user_id, order_id, notification_type, created_at) VALUES " +
-                        "(${notification.userId}, ${notification.secondUserId}, ${notification.orderId}, ${notification.notificationType}, '${notification.createdAt ?: DateTimeUtil.timestamp()}')" +
-                        " RETURNING notifications.id;")
-                .blockingGet()
+        val q = "INSERT INTO notifications " +
+                "(user_id, second_user_id, order_id, notification_type, created_at) VALUES " +
+                "(${notification.userId}, ${notification.secondUserId}, ${notification.orderId}, ${notification.notificationType}, '${notification.createdAt ?: DateTimeUtil.timestamp()}')" +
+                " RETURNING notifications.id;"
+        pool.rxQuery(q).blockingGet()
+        print("notification created")
         return null
     }
 

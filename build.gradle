@@ -48,23 +48,13 @@ dependencies {
     annotationProcessor("io.micronaut.data:micronaut-data-processor:1.0.2")
     implementation("io.micronaut.data:micronaut-data-hibernate-jpa:1.0.2")
 
-
     implementation("io.micronaut.sql:micronaut-jdbc-hikari")
     implementation("io.micronaut.sql:micronaut-hibernate-jpa")
     runtimeOnly("com.h2database:h2")
 
-    // https://mvnrepository.com/artifact/org.postgresql/postgresql
-    compile group: 'org.postgresql', name: 'postgresql', version: '42.2.16'
+    implementation group: 'org.postgresql', name: 'postgresql', version: '42.2.16'
 
-
-    // https://mvnrepository.com/artifact/io.micronaut.configuration/micronaut-postgres-reactive
-    compile group: 'io.micronaut.configuration', name: 'micronaut-postgres-reactive', version: '1.2.0.RC1'
-
-
-//    implementation("io.micronaut.data:micronaut-data-spring:1.0.2")
-    // https://mvnrepository.com/artifact/io.micronaut/micronaut-spring
-//    compile group: 'io.micronaut', name: 'micronaut-spring', version: '2.0.1'
-//    implementation("io.micronaut.data:micronaut-data-spring-jpa:1.0.2")
+    implementation group: 'io.micronaut.configuration', name: 'micronaut-postgres-reactive', version: '1.2.0.RC1'
 }
 
 test.classpath += configurations.developmentOnly

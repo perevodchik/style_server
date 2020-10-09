@@ -8,7 +8,7 @@ import io.micronaut.http.multipart.StreamingFileUpload
 
 interface SketchesService {
     fun getAllSketches(): List<SketchPreview>
-    fun getList(page: Int, limit: Int, min: Int, max: Int, tags: String, isFavorite:Boolean): List<SketchPreview>
+    fun getList(userId: Int, page: Int, limit: Int, min: Int, max: Int, tags: String, isFavorite:Boolean): List<SketchPreview>
     fun getSketchesByMaster(id: Int): List<SketchPreview>
     fun getSketchById(id: Int): SketchFull?
     fun createSketch(sketch: Sketch): Sketch

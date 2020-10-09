@@ -42,10 +42,6 @@ class OrdersController {
                         @QueryValue(value = "city") city: Optional<Boolean>,
                         @QueryValue(value = "page") page: Int,
                         @QueryValue(value = "limit") limit: Int): List<AvailableOrderPreview> {
-        println("cities [${cities.isEmpty}] [${cities.isPresent}] [${cities.orElse("")}]")
-        println("services [${services.isEmpty}] [${services.isPresent}] [${services.orElse("")}]")
-        println("price [${price.isEmpty}] [${price.isPresent}] [${price.orElse(false)}]")
-        println("city [${city.isEmpty}] [${city.isPresent}] [${city.orElse(false)}]")
         return ordersService.getAvailableOrders(page, limit, cities.orElse(""), services.orElse(""), price.orElse(false), city.orElse(false))
     }
 
@@ -176,6 +172,7 @@ class OrdersController {
                             )
                            conversionsService.createConversion(payload.clientId!!, payload.masterId!!)
                         }
+                        println("client ${order.clientId}")
                         return HttpResponse.ok(isUpdate)
                     }
                     order.masterId == currentUser -> {
@@ -193,6 +190,7 @@ class OrdersController {
                             )
                             conversionsService.createConversion(payload.clientId!!, payload.masterId!!)
                         }
+                        println("master ${order.masterId}")
                         return HttpResponse.ok(isUpdate)
                     }
                     else -> {

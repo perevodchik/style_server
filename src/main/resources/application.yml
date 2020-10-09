@@ -2,6 +2,9 @@ micronaut:
   application:
     name: style_server
   server:
+    maxRequestSize: 100MB
+    multipart:
+      maxFileSize: 100MB
     port: 8089
     cors:
       enabled: true

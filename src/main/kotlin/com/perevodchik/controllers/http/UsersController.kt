@@ -2,6 +2,7 @@ package com.perevodchik.controllers.http
 
 import com.perevodchik.domain.Phone
 import com.perevodchik.domain.User
+import com.perevodchik.domain.UserRegistered
 import com.perevodchik.domain.UserUpdatePayload
 import com.perevodchik.repository.*
 import com.perevodchik.security.AuthStorage
@@ -44,7 +45,7 @@ class UsersController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Post("/create")
-    fun create(@Body user: User): HttpResponse<User> {
+    fun create(@Body user: UserRegistered): HttpResponse<UserRegistered> {
         val user0 = usersService.create(user) ?: return HttpResponse.badRequest()
         return HttpResponse.ok(user0)
     }

@@ -1,6 +1,7 @@
 package com.perevodchik.repository.impl
 
 import com.perevodchik.domain.User
+import com.perevodchik.domain.UserRegistered
 import com.perevodchik.domain.UserShortData
 import com.perevodchik.domain.UserUpdatePayload
 import com.perevodchik.repository.UsersService
@@ -117,7 +118,7 @@ class UsersServiceImpl: UsersService {
         return r.iterator().next().getDouble("rate") ?: 0.0
     }
 
-    override fun create(user: User): User? {
+    override fun create(user: UserRegistered): UserRegistered? {
         val usersByPhone = pool.rxQuery("SELECT * FROM users WHERE phone = '${user.phone}'").blockingGet()
         println("exist ? ${usersByPhone.rowCount()}")
         if(usersByPhone.rowCount() == 0) {
@@ -125,7 +126,7 @@ class UsersServiceImpl: UsersService {
                     "INSERT INTO users (" +
                             "city_id, name, surname, avatar, phone, address, email, about, role" +
                             ") VALUES (" +
-                            "${user.cityId}, '${user.name}', '${user.surname}', '${user.avatar}', '${user.phone}', '', '${user.email}', '', ${user.role}" +
+                            "${user.cityId}, '${user.name}', '${user.surname}', '', '${user.phone}', '', '', '', ${user.role}" +
                             ") RETURNING users.id;"
             ).blockingGet()
             val i = r.iterator()

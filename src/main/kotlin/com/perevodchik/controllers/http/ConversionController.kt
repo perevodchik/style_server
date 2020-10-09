@@ -1,6 +1,7 @@
 package com.perevodchik.controllers.http
 
 import com.perevodchik.controllers.socket.SocketManager
+import com.perevodchik.domain.ConversionPreview
 import com.perevodchik.domain.Message
 import com.perevodchik.repository.ConversionsService
 import com.perevodchik.repository.OrdersService
@@ -31,8 +32,22 @@ class ConversionController {
     @Get("/get")
     fun getConversions(authentication: Authentication): HttpResponse<*> {
         val conversions = conversionsService.getConversions(authentication.attributes["id"] as Int, authentication.attributes["role"] == 1)
-        print("conversions is $conversions")
         return HttpResponse.ok(conversions)
+    }
+
+    @Secured(SecurityRule.IS_AUTHENTICATED)
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Post("/conversion")
+    fun getConversion(userId: Int, authentication: Authentication): HttpResponse<ConversionPreview> {
+        val conversion = if(authentication.attributes["role"] as Int == 0)
+            conversionsService.getConversion(authentication.attributes["id"] as Int, userId)
+        else
+            conversionsService.getConversion(userId, authentication.attributes["id"] as Int)
+        return if(conversion.isPresent)
+            HttpResponse.ok(conversion.get())
+        else
+            HttpResponse.badRequest()
     }
 
     @Secured(SecurityRule.IS_AUTHENTICATED)
@@ -45,7 +60,8 @@ class ConversionController {
                     authentication: Authentication): HttpResponse<JsonObject> {
         val userId = authentication.attributes["id"] as Int
         val conversionData = conversionsService.getMessagesByConversion(conversionId, userId, page, limit)
-        val conversion = conversionsService.getConversion(conversionId)
+        val conversion = conversionsService.getConversion(conversionId, authentication.attributes["role"] as Int == 1)
+        println("conversion [${conversion.isPresent}] [${conversion.isEmpty}]")
         if(conversion.isPresent) {
             conversionData.put("canSendMessages", ordersService.isClientRecordedToMaster(userId, conversion.get().user!!.id))
         } else
@@ -63,7 +79,7 @@ class ConversionController {
     fun sendMessage(@Body message: Message): HttpResponse<Message> {
         val sendMessage = conversionsService.sendMessage(message)
         SocketManager.manager().sendMessage(message, message.receiverId)
-        if(sendMessage.isEmpty)
+        if(!sendMessage.isPresent)
             return HttpResponse.badRequest()
         return HttpResponse.ok(sendMessage.get())
     }
@@ -73,7 +89,6 @@ class ConversionController {
     @Produces(MediaType.APPLICATION_JSON)
     @Post("/read")
     fun readMessage(conversionId: Int, messageId: Int, authentication: Authentication): HttpResponse<Any> {
-        println("\nread [$conversionId] [$messageId] [${authentication.attributes["id"] as Int}]\n")
         conversionsService.read(conversionId, authentication.attributes["id"] as Int, messageId)
         return HttpResponse.ok()
     }

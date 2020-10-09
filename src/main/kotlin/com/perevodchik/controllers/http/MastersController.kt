@@ -39,9 +39,6 @@ class MastersController {
             @QueryValue(value = "services") services: Optional<String>,
             @QueryValue(value = "rate") rate: Optional<Boolean>
             ): HttpResponse<List<UserShortData>> {
-        println("[${cities.orElse("")}] [${cities.isPresent}] [${cities.isEmpty}]")
-        println("[${services.orElse("")}] [${services.isPresent}] [${services.isEmpty}]")
-        println("[${rate.orElse(false)}] [${rate.isPresent}] [${rate.isEmpty}]")
         return HttpResponse.ok(usersService.getMasters(page * limit, limit, cities.orElse(""), services.orElse(""), rate.orElse(false)))
     }
 

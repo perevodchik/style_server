@@ -3,7 +3,13 @@ package com.perevodchik.utils
 import io.micronaut.http.multipart.StreamingFileUpload
 import io.reactivex.Single
 import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.util.*
+import javax.imageio.IIOImage
+import javax.imageio.ImageIO
+import javax.imageio.ImageWriteParam
+
 
 class FileUtils {
 
@@ -33,6 +39,9 @@ class FileUtils {
         return try {
             Single.fromPublisher(file.transferTo(File("static/$newName")))
                     .map {
+                        try {
+                            compress("static/$newName", 0.5f)
+                        } catch(ex: Exception) {}
                         newName
                     }.blockingGet()
         } catch (ex: Exception) {
@@ -40,6 +49,54 @@ class FileUtils {
             ""
         }
     }
+
+    fun uploadFileTest(file: StreamingFileUpload, name: String, quality: Float): String {
+        return try {
+            Single.fromPublisher(file.transferTo(File("static/$name")))
+                    .map {
+                        compress("static/$name", quality)
+                        name
+                    }.blockingGet()
+        } catch (ex: Exception) {
+            ex.printStackTrace()
+            ""
+        }
+    }
+
+    private fun compress(name: String, quality: Float) {
+        val file = File(name)
+        val image = ImageIO.read(file)
+
+        print("started file size ${getFileSizeKiloBytes(file)}")
+
+        val compressedImageFile = File(file.path)
+        val os: OutputStream = FileOutputStream(compressedImageFile)
+
+        val writers = ImageIO.getImageWritersByFormatName("jpg")
+        val writer = writers.next()
+
+        val ios = ImageIO.createImageOutputStream(os)
+        writer.output = ios
+        val param = writer.defaultWriteParam
+
+        param.compressionMode = ImageWriteParam.MODE_EXPLICIT
+        param.compressionQuality = quality
+        writer.write(null, IIOImage(image, null, null), param)
+
+        println(", finished file size ${getFileSizeKiloBytes(compressedImageFile)}")
+        os.close()
+        ios.close()
+        writer.dispose()
+    }
+
+    private fun getFileSizeMegaBytes(file: File): String? {
+        return (file.length().toDouble() / (1024 * 1024)).toString() + " mb"
+    }
+
+    private fun getFileSizeKiloBytes(file: File): String? {
+        return (file.length().toDouble() / 1024).toString() + "  kb"
+    }
+
 
     fun deleteFile(fileName: String) {
         val f = File(fileName)
