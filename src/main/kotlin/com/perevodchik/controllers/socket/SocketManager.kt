@@ -17,15 +17,20 @@ class SocketManager {
     }
 
     fun sendMessage(message: Message, receiverId: Int) {
-        sockets[receiverId]?.sendSync(message.toJson())
+        println("receiver $receiverId, sockets => $sockets")
+        val socket = sockets[receiverId]
+        print("send $message to $socket")
+        socket?.sendSync(message.toJson())
     }
 
     fun addSocket(id: Int, session: WebSocketSession) {
+        println("add socket for user $id [$session]")
         sockets[id] = session
     }
 
     fun removeSocket(id: Int) {
-        sockets.remove(id)
+        val r = sockets.remove(id)
+        println("remove socket from user $id [$r]")
     }
 
 }
